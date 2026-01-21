@@ -214,7 +214,7 @@
       text-align:center;
     }
 
-    /* Table */
+    /* Table Container dengan Scrollbar Horizontal */
     #table-container{
       width:100%;
       overflow-x:auto;
@@ -225,20 +225,69 @@
       margin-top: 14px;
       border:1px solid var(--border);
       background:#fff;
+      
+      /* Styling untuk scrollbar */
+      scrollbar-width: thin; /* Firefox */
+      scrollbar-color: #888 #f1f1f1; /* Firefox */
     }
 
+    /* Styling scrollbar untuk Webkit browsers (Chrome, Safari, Edge) */
+    #table-container::-webkit-scrollbar {
+      width: 12px;
+      height: 12px;
+    }
+
+    #table-container::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 6px;
+    }
+
+    #table-container::-webkit-scrollbar-thumb {
+      background: #888;
+      border-radius: 6px;
+      border: 3px solid #f1f1f1;
+    }
+
+    #table-container::-webkit-scrollbar-thumb:hover {
+      background: #555;
+    }
+
+    #table-container::-webkit-scrollbar-corner {
+      background: #f1f1f1;
+    }
+
+    /* Table dengan Lebar Minimum */
     table{
       border-collapse: collapse;
       min-width: 100%;
       background: white;
       font-size: 0.75rem;
+      table-layout: auto; /* Biarkan kolom mengatur lebarnya sendiri */
     }
+    
+    /* Untuk tabel yang sangat lebar, biarkan melebar sesuai konten */
+    table.wide-table {
+      min-width: max-content; /* Membuat tabel melebar sesuai kontennya */
+    }
+
     th, td{
       border: 1px solid #e0e0e0;
       padding: 8px 10px;
       white-space: nowrap;
       vertical-align: middle;
+      min-width: 100px; /* Lebar minimum untuk kolom */
     }
+    
+    /* Kolom gambar lebih kecil */
+    td img-cell, td.status-cell {
+      min-width: 80px;
+    }
+    
+    /* Kolom IDPEL sedikit lebih lebar */
+    td.idpel-cell {
+      min-width: 140px;
+    }
+
     th{
       background: #222;
       color: white;
@@ -248,6 +297,7 @@
       font-weight: 800;
       user-select: none;
       height: 40px;
+      min-width: 100px;
     }
     th:not(:last-child):hover{ background:#333; cursor:pointer; }
 
@@ -498,6 +548,7 @@
     .main{
       flex:1;
       padding: 20px;
+      overflow-x: hidden; /* Cegah horizontal scroll di main */
     }
 
     .topbar{
@@ -538,6 +589,11 @@
       .sidebar.open{ left: 0; }
       .overlay.show{ display:block; }
       .sidebar-toggle{ display:inline-flex; }
+      
+      /* Di mobile, table container lebih kecil */
+      #table-container {
+        max-height: 60vh;
+      }
     }
 
     /* ===== Modal Output Runner (opsional, butuh backend) ===== */
@@ -1430,6 +1486,11 @@
             th.textContent=hText;
             th.onclick=()=>sortTable(index);
             if(sortDirection[index]) th.textContent += (sortDirection[index]==='asc'?' ▲':' ▼');
+            
+            // Tambahkan class khusus untuk IDPEL
+            if (hText.toUpperCase().includes("IDPEL")) {
+              th.classList.add("idpel-cell");
+            }
             hrow.appendChild(th);
           });
 
@@ -1438,11 +1499,13 @@
             // Kolom Gambar
             const imgTh=document.createElement("th");
             imgTh.textContent=item.headerName;
+            imgTh.classList.add("img-cell");
             hrow.appendChild(imgTh);
             
             // Kolom Status untuk gambar ini
             const statusTh=document.createElement("th");
             statusTh.textContent=`STATUS ${item.headerName}`;
+            statusTh.classList.add("status-cell");
             hrow.appendChild(statusTh);
           });
 
@@ -1500,6 +1563,11 @@
               const td=document.createElement("td");
               const val=rowData[i];
               td.textContent=(val===undefined||val===null||val==="")? "-": val;
+              
+              // Tambahkan class khusus untuk IDPEL
+              if (header[i] && header[i].toUpperCase().includes("IDPEL")) {
+                td.classList.add("idpel-cell");
+              }
               row.appendChild(td);
             }
 
@@ -1507,6 +1575,7 @@
             selectedImageFolders.forEach(item=>{
               // Kolom Gambar
               const imgTd=document.createElement("td");
+              imgTd.classList.add("img-cell");
               const idpel=(idpelIndex!==-1)?rowData[idpelIndex]:null;
               if(idpelIndex!==-1 && idpel){
                 const img=document.createElement("img");
@@ -1578,6 +1647,14 @@
 
           table.appendChild(tbody);
 
+          // Jika tabel sangat lebar, tambahkan class untuk membuat tabel bisa melebar
+          const totalColumns = excelColCount + (selectedImageFolders.length * 2);
+          if (totalColumns > 15) {
+            table.classList.add("wide-table");
+          } else {
+            table.classList.remove("wide-table");
+          }
+
           if(currentRawData.length>0){
             const allHeaders=[...header];
             selectedImageFolders.forEach(item=>{
@@ -1588,6 +1665,9 @@
           }
 
           applyFreeze();
+          
+          // Scroll ke paling kiri saat render tabel baru
+          tableContainer.scrollLeft = 0;
         }
 
         function renderDashboard(){
