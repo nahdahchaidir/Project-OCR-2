@@ -1125,7 +1125,8 @@
         }
 
         // Fungsi untuk menentukan status stan berdasarkan analisis gambar
-        function determineStanStatus(imageExists, imageBlank, imagePagar, ocrValue) {
+        // Dikaitkan langsung dengan status gambar yang sudah ada
+        function determineStanStatus(imageExists, imageBlank, imagePagar, imageStatus) {
           if (!imageExists) {
             return 'unknown'; // Gambar tidak ada
           }
@@ -1134,15 +1135,16 @@
             return 'invalid'; // Gambar kosong atau pagar = tidak valid
           }
           
-          // Jika OCR dapat membaca angka dengan baik, kemungkinan stan valid
-          const isOcrReadable = checkOcrReadable(ocrValue);
-          if (isOcrReadable) {
-            // 80% kemungkinan valid jika OCR baik
-            return Math.random() < 0.8 ? 'valid' : 'invalid';
-          } else {
-            // 70% kemungkinan tidak valid jika OCR buruk
-            return Math.random() < 0.7 ? 'invalid' : 'unknown';
+          // Jika status gambar "Valid" (OCR bisa baca angka), maka stan kemungkinan valid
+          if (imageStatus === 'true') {
+            return 'valid';
+          } 
+          // Jika status gambar "Tidak Valid" (OCR tidak bisa baca angka), maka stan tidak valid
+          else if (imageStatus === 'false') {
+            return 'invalid';
           }
+          
+          return 'unknown';
         }
 
         function computeRowStatus(row, idpelIndex){
@@ -1435,6 +1437,7 @@
           const activeStanFilters = Object.keys(stanStatusFilters).filter(k => stanStatusFilters[k].length>0);
           if(activeStanFilters.length>0 && idpelIndex !== -1){
             let tempFilteredData = [];
+            let foundMatches = false;
             
             for (const row of filteredData) {
               const idpel = String(row[idpelIndex] || '');
@@ -1458,26 +1461,20 @@
               
               if (matchesAllFilters) {
                 tempFilteredData.push(row);
+                foundMatches = true;
               }
             }
             
-            filteredData = tempFilteredData;
-            
-            // Tandai apakah ada hasil filter
-            hasFilterResults = filteredData.length > 0;
-            
-            // Jika tidak ada hasil, tampilkan pesan tapi tetap tampilkan semua data
-            if (!hasFilterResults) {
-              // Tampilkan pesan tapi tetap tampilkan semua data
-              console.log("Filter tidak menghasilkan data, menampilkan semua data...");
-              // Reset filteredData ke data asli
-              filteredData = [...rawDataRows];
-              
-              // Tampilkan pesan di console atau bisa ditambahkan notifikasi visual
-              setTimeout(() => {
-                alert("Filter tidak menghasilkan data. Menampilkan semua data.");
-              }, 100);
+            if (foundMatches) {
+              filteredData = tempFilteredData;
+              hasFilterResults = true;
+            } else {
+              // Jika tidak ada yang cocok, tetap tampilkan semua data yang sudah difilter
+              hasFilterResults = false;
+              // Tapi jangan reset filteredData, biarkan dengan filter lainnya
             }
+          } else {
+            hasFilterResults = true;
           }
 
           const sortedData=[...filteredData];
@@ -1693,15 +1690,26 @@
             const noDataCell = document.createElement("td");
             noDataCell.colSpan = excelColCount + (selectedImageFolders.length * 2);
             noDataCell.className = "no-data-message";
-            noDataCell.innerHTML = `
-              <div style="padding: 30px;">
-                <strong>⚠️ Tidak ada data yang cocok dengan filter yang diterapkan.</strong><br><br>
-                <small>Coba:</small><br>
-                <small>• Periksa filter yang aktif (IDPEL, Status OCR, Status Stan)</small><br>
-                <small>• Reset filter dengan memilih "Semua" di dropdown filter</small><br>
-                <small>• Atau hapus pencarian IDPEL jika ada</small>
-              </div>
-            `;
+            
+            if (!hasFilterResults) {
+              noDataCell.innerHTML = `
+                <div style="padding: 30px;">
+                  <strong>⚠️ Tidak ada data yang cocok dengan filter status stan yang dipilih.</strong><br><br>
+                  <small>Namun, data tetap ditampilkan dengan filter lainnya (jika ada).</small><br>
+                  <small>Coba pilih status stan yang berbeda atau "Semua Status Stan".</small>
+                </div>
+              `;
+            } else {
+              noDataCell.innerHTML = `
+                <div style="padding: 30px;">
+                  <strong>⚠️ Tidak ada data yang cocok dengan semua filter yang diterapkan.</strong><br><br>
+                  <small>Coba:</small><br>
+                  <small>• Periksa filter yang aktif (IDPEL, Status OCR, Status Stan)</small><br>
+                  <small>• Reset filter dengan memilih "Semua" di dropdown filter</small><br>
+                  <small>• Atau hapus pencarian IDPEL jika ada</small>
+                </div>
+              `;
+            }
             noDataRow.appendChild(noDataCell);
             tbody.appendChild(noDataRow);
           } else {
@@ -1747,11 +1755,11 @@
                     // Tentukan status gambar
                     const imageStatus = determineImageStatus(ocrValue, imageExists, imageBlank, imagePagar);
                     
-                    // Tentukan status stan (simulasi)
+                    // Tentukan status stan berdasarkan status gambar
                     const stanKey = `${idpel}_${folderIndex}`;
                     if (!stanStatusData[stanKey]) {
-                      // Simpan status stan untuk filtering
-                      stanStatusData[stanKey] = determineStanStatus(imageExists, imageBlank, imagePagar, ocrValue);
+                      // Simpan status stan untuk filtering - DIKATAKAN LANGSUNG DENGAN STATUS GAMBAR
+                      stanStatusData[stanKey] = determineStanStatus(imageExists, imageBlank, imagePagar, imageStatus.status);
                     }
                     
                     // Update status di kolom status
