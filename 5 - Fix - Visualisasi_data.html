@@ -689,16 +689,17 @@
           <h3 style="margin: 6px 0 0 0; color:#555;">Tabel Data Interaktif</h3>
 
           <div id="controls-group">
+            <!-- MODIFIKASI: Folder Foto untuk Gambar 1, 2, dan 3 -->
             <div class="control-card span-7">
               <label for="folderInput">Folder Foto (Header|Path, pisahkan koma):</label>
 
               <div class="folder-inline">
                 <div>
                   <input type="text" id="folderInput"
-                         placeholder="Foto Lokasi|images1, Foto Jarak|images2"
-                         value="Gambar 1|3_scan_output">
+                         placeholder="Gambar 1|folder1, Gambar 2|folder2, Gambar 3|folder3"
+                         value="Gambar 1|3_scan_output, Gambar 2|images2, Gambar 3|images3">
                   <p class="small-note" style="margin:6px 0 0 0;">
-                    Contoh: <b>Foto Lokasi|images1</b>, <b>Foto Jarak|images2</b>
+                    Contoh: <b>Gambar 1|images1</b>, <b>Gambar 2|images2</b>, <b>Gambar 3|images3</b>
                   </p>
                 </div>
 
@@ -997,6 +998,54 @@
           }catch(e){ return false; }
         }
 
+        // Fungsi untuk mengecek apakah OCR dapat membaca angka
+        function checkOcrReadable(ocrValue) {
+          if (!ocrValue) return false;
+          const strValue = String(ocrValue).trim();
+          
+          // Cek jika mengandung kata "Tidak terbaca"
+          if (strValue.toLowerCase().includes('tidak terbaca')) {
+            return false;
+          }
+          
+          // Cek jika mengandung angka (digit)
+          const hasDigits = /\d/.test(strValue);
+          
+          // Cek jika formatnya "Stand: XXXX" (dimana XXXX adalah angka)
+          if (strValue.toLowerCase().startsWith('stand:')) {
+            const standNumber = strValue.split(':')[1]?.trim();
+            return /\d+/.test(standNumber);
+          }
+          
+          return hasDigits;
+        }
+
+        // Fungsi untuk menentukan status gambar berdasarkan OCR
+        function determineImageStatus(ocrValue, imageExists, imageBlank, imagePagar) {
+          // Jika gambar tidak ada
+          if (!imageExists) {
+            return { status: 'false', text: 'Tidak Ada', tooltip: 'Gambar tidak ditemukan' };
+          }
+          
+          // Jika gambar kosong atau pagar
+          if (imageBlank) {
+            return { status: 'false', text: 'Kosong', tooltip: 'Gambar kosong/blank' };
+          }
+          
+          if (imagePagar) {
+            return { status: 'false', text: 'Pagar', tooltip: 'Gambar pagar' };
+          }
+          
+          // Cek apakah OCR dapat membaca angka
+          const isOcrReadable = checkOcrReadable(ocrValue);
+          
+          if (isOcrReadable) {
+            return { status: 'true', text: 'Valid', tooltip: 'OCR dapat membaca angka' };
+          } else {
+            return { status: 'false', text: 'Tidak Valid', tooltip: 'OCR tidak dapat membaca angka' };
+          }
+        }
+
         function computeRowStatus(row, idpelIndex){
           if(ocrColIndex===-1) return null;
 
@@ -1007,15 +1056,6 @@
           if(refColIndex!==-1){
             const refDigits=normalizeDigits(row[refColIndex]);
             if(refDigits && ocrDigits !== refDigits) return false;
-          }
-
-          if(idpelIndex!==-1){
-            const idpel=String(row[idpelIndex] ?? '').trim();
-            if(!idpel) return false;
-
-            const st=imageCheckByIdpel[idpel];
-            if(!st) return null;
-            if(!st.ok) return false;
           }
 
           return true;
@@ -1379,51 +1419,74 @@
           }
 
           const excelColCount=header.length;
-          const imageHeaders=selectedImageFolders.map(item=>item.headerName);
           const idpelIndex=header.findIndex(h=>String(h).toUpperCase().includes("IDPEL"));
 
           const thead=document.createElement("thead");
           const hrow=document.createElement("tr");
 
-          [...header, ...imageHeaders, "STATUS"].forEach((hText, index)=>{
+          // Kolom dari Excel
+          header.forEach((hText, index)=>{
             const th=document.createElement("th");
             th.textContent=hText;
-
-            if(index<excelColCount){
-              th.onclick=()=>sortTable(index);
-              if(sortDirection[index]) th.textContent += (sortDirection[index]==='asc'?' ▲':' ▼');
-            }
+            th.onclick=()=>sortTable(index);
+            if(sortDirection[index]) th.textContent += (sortDirection[index]==='asc'?' ▲':' ▼');
             hrow.appendChild(th);
           });
+
+          // MODIFIKASI: Kolom untuk Gambar 1, 2, 3 dan Status masing-masing
+          selectedImageFolders.forEach(item=>{
+            // Kolom Gambar
+            const imgTh=document.createElement("th");
+            imgTh.textContent=item.headerName;
+            hrow.appendChild(imgTh);
+            
+            // Kolom Status untuk gambar ini
+            const statusTh=document.createElement("th");
+            statusTh.textContent=`STATUS ${item.headerName}`;
+            hrow.appendChild(statusTh);
+          });
+
           thead.appendChild(hrow);
 
           const filterRow=document.createElement("tr");
           filterRow.id="filterRow";
 
-          const totalCols=excelColCount + imageHeaders.length + 1;
-          for(let i=0;i<totalCols;i++){
+          // Filter untuk kolom Excel
+          header.forEach((_, i)=>{
             const td=document.createElement("td");
-            if(i<excelColCount){
-              const select=document.createElement("select");
-              let optionAll=document.createElement("option");
-              optionAll.value="";
-              optionAll.textContent=`Semua ${header[i]}`;
-              select.appendChild(optionAll);
+            const select=document.createElement("select");
+            let optionAll=document.createElement("option");
+            optionAll.value="";
+            optionAll.textContent=`Semua ${header[i]}`;
+            select.appendChild(optionAll);
 
-              const uniqueValues=getUniqueColumnValues(i);
-              uniqueValues.forEach(val=>{
-                let option=document.createElement("option");
-                option.value=val;
-                option.textContent=val;
-                select.appendChild(option);
-              });
+            const uniqueValues=getUniqueColumnValues(i);
+            uniqueValues.forEach(val=>{
+              let option=document.createElement("option");
+              option.value=val;
+              option.textContent=val;
+              select.appendChild(option);
+            });
 
-              select.value=columnFilters[i] || "";
-              select.onchange=(e)=>updateColumnFilter(i,e.target.value);
-              td.appendChild(select);
-            }
+            select.value=columnFilters[i] || "";
+            select.onchange=(e)=>updateColumnFilter(i,e.target.value);
+            td.appendChild(select);
             filterRow.appendChild(td);
-          }
+          });
+
+          // MODIFIKASI: Filter untuk kolom gambar dan status (kosong)
+          selectedImageFolders.forEach(()=>{
+            // Filter untuk kolom gambar
+            const imgFilterTd=document.createElement("td");
+            imgFilterTd.innerHTML="&nbsp;";
+            filterRow.appendChild(imgFilterTd);
+            
+            // Filter untuk kolom status gambar
+            const statusFilterTd=document.createElement("td");
+            statusFilterTd.innerHTML="&nbsp;";
+            filterRow.appendChild(statusFilterTd);
+          });
+
           thead.appendChild(filterRow);
           table.appendChild(thead);
 
@@ -1432,6 +1495,7 @@
           pageData.forEach(rowData=>{
             const row=document.createElement("tr");
 
+            // Kolom data Excel
             for(let i=0;i<excelColCount;i++){
               const td=document.createElement("td");
               const val=rowData[i];
@@ -1439,29 +1503,75 @@
               row.appendChild(td);
             }
 
+            // MODIFIKASI: Kolom untuk setiap gambar dan statusnya
             selectedImageFolders.forEach(item=>{
-              const td=document.createElement("td");
+              // Kolom Gambar
+              const imgTd=document.createElement("td");
               const idpel=(idpelIndex!==-1)?rowData[idpelIndex]:null;
               if(idpelIndex!==-1 && idpel){
                 const img=document.createElement("img");
                 img.src=`${item.folderPath}/${idpel}.jpg`;
-                img.alt=`Foto untuk IDPEL ${idpel} (${item.folderPath})`;
+                img.alt=`${item.headerName} untuk IDPEL ${idpel}`;
                 img.onclick=()=>openPopup(img.src);
 
-                img.onerror=function(){
-                  td.textContent=`Foto di ${item.folderPath} tidak ditemukan`;
-                  img.remove();
+                // Tambahkan event untuk analisis gambar
+                img.onload = function() {
+                  // Analisis apakah gambar kosong atau pagar
+                  const imageBlank = isLikelyBlankImage(img);
+                  const imagePagar = isPagarImage(img);
+                  const imageExists = true;
+                  
+                  // Ambil nilai OCR dari kolom OCR
+                  const ocrValue = rowData[ocrColIndex];
+                  
+                  // Tentukan status gambar
+                  const imageStatus = determineImageStatus(ocrValue, imageExists, imageBlank, imagePagar);
+                  
+                  // Update status di kolom status
+                  const statusCell = imgTd.nextElementSibling;
+                  if (statusCell) {
+                    statusCell.textContent = imageStatus.text;
+                    statusCell.className = `row-status ${imageStatus.status}`;
+                    statusCell.title = imageStatus.tooltip;
+                  }
                 };
-                td.appendChild(img);
-              }else{
-                td.textContent="-";
-              }
-              row.appendChild(td);
-            });
 
-            const statusTd=document.createElement("td");
-            statusTd.textContent="N/A";
-            row.appendChild(statusTd);
+                img.onerror=function(){
+                  imgTd.textContent=`Foto di ${item.folderPath} tidak ditemukan`;
+                  img.remove();
+                  
+                  // Set status menjadi false karena gambar tidak ada
+                  const ocrValue = rowData[ocrColIndex];
+                  const imageStatus = determineImageStatus(ocrValue, false, false, false);
+                  
+                  const statusCell = imgTd.nextElementSibling;
+                  if (statusCell) {
+                    statusCell.textContent = imageStatus.text;
+                    statusCell.className = `row-status ${imageStatus.status}`;
+                    statusCell.title = imageStatus.tooltip;
+                  }
+                };
+                imgTd.appendChild(img);
+              }else{
+                imgTd.textContent="-";
+                
+                // Set status N/A karena tidak ada IDPEL
+                const statusCell = imgTd.nextElementSibling;
+                if (statusCell) {
+                  statusCell.textContent = "N/A";
+                  statusCell.className = "row-status na";
+                  statusCell.title = "Tidak ada IDPEL";
+                }
+              }
+              row.appendChild(imgTd);
+
+              // Kolom Status Gambar (placeholder)
+              const statusTd=document.createElement("td");
+              statusTd.textContent="Loading...";
+              statusTd.className="row-status na";
+              statusTd.title="Memeriksa gambar...";
+              row.appendChild(statusTd);
+            });
 
             tbody.appendChild(row);
           });
@@ -1469,7 +1579,11 @@
           table.appendChild(tbody);
 
           if(currentRawData.length>0){
-            const allHeaders=[...header, ...imageHeaders, "STATUS"];
+            const allHeaders=[...header];
+            selectedImageFolders.forEach(item=>{
+              allHeaders.push(item.headerName);
+              allHeaders.push(`STATUS ${item.headerName}`);
+            });
             createFreezeControls(allHeaders);
           }
 
