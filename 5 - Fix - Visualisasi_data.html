@@ -214,7 +214,7 @@
       text-align:center;
     }
 
-    /* Table Container dengan Scrollbar Horizontal */
+    /* Table */
     #table-container{
       width:100%;
       overflow-x:auto;
@@ -225,69 +225,20 @@
       margin-top: 14px;
       border:1px solid var(--border);
       background:#fff;
-      
-      /* Styling untuk scrollbar */
-      scrollbar-width: thin; /* Firefox */
-      scrollbar-color: #888 #f1f1f1; /* Firefox */
     }
 
-    /* Styling scrollbar untuk Webkit browsers (Chrome, Safari, Edge) */
-    #table-container::-webkit-scrollbar {
-      width: 12px;
-      height: 12px;
-    }
-
-    #table-container::-webkit-scrollbar-track {
-      background: #f1f1f1;
-      border-radius: 6px;
-    }
-
-    #table-container::-webkit-scrollbar-thumb {
-      background: #888;
-      border-radius: 6px;
-      border: 3px solid #f1f1f1;
-    }
-
-    #table-container::-webkit-scrollbar-thumb:hover {
-      background: #555;
-    }
-
-    #table-container::-webkit-scrollbar-corner {
-      background: #f1f1f1;
-    }
-
-    /* Table dengan Lebar Minimum */
     table{
       border-collapse: collapse;
       min-width: 100%;
       background: white;
       font-size: 0.75rem;
-      table-layout: auto; /* Biarkan kolom mengatur lebarnya sendiri */
     }
-    
-    /* Untuk tabel yang sangat lebar, biarkan melebar sesuai konten */
-    table.wide-table {
-      min-width: max-content; /* Membuat tabel melebar sesuai kontennya */
-    }
-
     th, td{
       border: 1px solid #e0e0e0;
       padding: 8px 10px;
       white-space: nowrap;
       vertical-align: middle;
-      min-width: 100px; /* Lebar minimum untuk kolom */
     }
-    
-    /* Kolom gambar lebih kecil */
-    td.img-cell, td.status-cell {
-      min-width: 80px;
-    }
-    
-    /* Kolom IDPEL sedikit lebih lebar */
-    td.idpel-cell {
-      min-width: 140px;
-    }
-
     th{
       background: #222;
       color: white;
@@ -297,7 +248,6 @@
       font-weight: 800;
       user-select: none;
       height: 40px;
-      min-width: 100px;
     }
     th:not(:last-child):hover{ background:#333; cursor:pointer; }
 
@@ -548,7 +498,6 @@
     .main{
       flex:1;
       padding: 20px;
-      overflow-x: hidden; /* Cegah horizontal scroll di main */
     }
 
     .topbar{
@@ -589,11 +538,6 @@
       .sidebar.open{ left: 0; }
       .overlay.show{ display:block; }
       .sidebar-toggle{ display:inline-flex; }
-      
-      /* Di mobile, table container lebih kecil */
-      #table-container {
-        max-height: 60vh;
-      }
     }
 
     /* ===== Modal Output Runner (opsional, butuh backend) ===== */
@@ -676,21 +620,6 @@
     }
     .pill.ok{ border-color: rgba(34,197,94,.6); }
     .pill.err{ border-color: rgba(239,68,68,.6); }
-    
-    /* Styling untuk pesan tidak ada data */
-    .no-data-message {
-      text-align: center;
-      padding: 40px 20px;
-      color: #666;
-      font-style: italic;
-      background-color: #f9f9f9;
-      border-radius: 8px;
-      margin: 20px 0;
-    }
-    
-    .no-data-message strong {
-      color: #dc3545;
-    }
   </style>
 </head>
 
@@ -760,17 +689,16 @@
           <h3 style="margin: 6px 0 0 0; color:#555;">Tabel Data Interaktif</h3>
 
           <div id="controls-group">
-            <!-- MODIFIKASI: Folder Foto untuk Gambar 1, 2, dan 3 -->
             <div class="control-card span-7">
               <label for="folderInput">Folder Foto (Header|Path, pisahkan koma):</label>
 
               <div class="folder-inline">
                 <div>
                   <input type="text" id="folderInput"
-                         placeholder="Gambar 1|3_scan_output, Gambar 2|images2, Gambar 3|images3"
-                         value="Gambar 1|3_scan_output, Gambar 2|images2, Gambar 3|images3">
+                         placeholder="Foto Lokasi|images1, Foto Jarak|images2"
+                         value="Gambar 1|3_scan_output">
                   <p class="small-note" style="margin:6px 0 0 0;">
-                    Contoh: <b>Gambar 1|images1</b>, <b>Gambar 2|images2</b>, <b>Gambar 3|images3</b>
+                    Contoh: <b>Foto Lokasi|images1</b>, <b>Foto Jarak|images2</b>
                   </p>
                 </div>
 
@@ -877,13 +805,6 @@
         let pagarTemplateHash = null;
         let statusCellByIdpel = new Map();
         let rowDataByIdpel = new Map();
-        
-        // Tambahkan objek untuk menyimpan filter status stan
-        let stanStatusFilters = {};
-        // Tambahkan objek untuk menyimpan data status stan per gambar
-        let stanStatusData = {}; // Format: { "idpel_imageIndex": "valid|invalid|unknown" }
-        // Tambahkan flag untuk menunjukkan apakah filter menghasilkan data
-        let hasFilterResults = true;
 
         // ===== Sidebar toggle (mobile) =====
         function toggleSidebar(force){
@@ -1076,77 +997,6 @@
           }catch(e){ return false; }
         }
 
-        // Fungsi untuk mengecek apakah OCR dapat membaca angka
-        function checkOcrReadable(ocrValue) {
-          if (!ocrValue) return false;
-          const strValue = String(ocrValue).trim();
-          
-          // Cek jika mengandung kata "Tidak terbaca"
-          if (strValue.toLowerCase().includes('tidak terbaca')) {
-            return false;
-          }
-          
-          // Cek jika mengandung angka (digit)
-          const hasDigits = /\d/.test(strValue);
-          
-          // Cek jika formatnya "Stand: XXXX" (dimana XXXX adalah angka)
-          if (strValue.toLowerCase().startsWith('stand:')) {
-            const standNumber = strValue.split(':')[1]?.trim();
-            return /\d+/.test(standNumber);
-          }
-          
-          return hasDigits;
-        }
-
-        // Fungsi untuk menentukan status gambar berdasarkan OCR
-        function determineImageStatus(ocrValue, imageExists, imageBlank, imagePagar) {
-          // Jika gambar tidak ada
-          if (!imageExists) {
-            return { status: 'false', text: 'Tidak Ada', tooltip: 'Gambar tidak ditemukan' };
-          }
-          
-          // Jika gambar kosong atau pagar
-          if (imageBlank) {
-            return { status: 'false', text: 'Kosong', tooltip: 'Gambar kosong/blank' };
-          }
-          
-          if (imagePagar) {
-            return { status: 'false', text: 'Pagar', tooltip: 'Gambar pagar' };
-          }
-          
-          // Cek apakah OCR dapat membaca angka
-          const isOcrReadable = checkOcrReadable(ocrValue);
-          
-          if (isOcrReadable) {
-            return { status: 'true', text: 'Valid', tooltip: 'OCR dapat membaca angka' };
-          } else {
-            return { status: 'false', text: 'Tidak Valid', tooltip: 'OCR tidak dapat membaca angka' };
-          }
-        }
-
-        // Fungsi untuk menentukan status stan berdasarkan analisis gambar
-        // Dikaitkan langsung dengan status gambar yang sudah ada
-        function determineStanStatus(imageExists, imageBlank, imagePagar, imageStatus) {
-          if (!imageExists) {
-            return 'unknown'; // Gambar tidak ada
-          }
-          
-          if (imageBlank || imagePagar) {
-            return 'invalid'; // Gambar kosong atau pagar = tidak valid
-          }
-          
-          // Jika status gambar "Valid" (OCR bisa baca angka), maka stan kemungkinan valid
-          if (imageStatus === 'true') {
-            return 'valid';
-          } 
-          // Jika status gambar "Tidak Valid" (OCR tidak bisa baca angka), maka stan tidak valid
-          else if (imageStatus === 'false') {
-            return 'invalid';
-          }
-          
-          return 'unknown';
-        }
-
         function computeRowStatus(row, idpelIndex){
           if(ocrColIndex===-1) return null;
 
@@ -1157,6 +1007,15 @@
           if(refColIndex!==-1){
             const refDigits=normalizeDigits(row[refColIndex]);
             if(refDigits && ocrDigits !== refDigits) return false;
+          }
+
+          if(idpelIndex!==-1){
+            const idpel=String(row[idpelIndex] ?? '').trim();
+            if(!idpel) return false;
+
+            const st=imageCheckByIdpel[idpel];
+            if(!st) return null;
+            if(!st.ok) return false;
           }
 
           return true;
@@ -1262,9 +1121,6 @@
           imageCheckByIdpel={};
           statusCellByIdpel.clear();
           rowDataByIdpel.clear();
-          stanStatusFilters = {};
-          stanStatusData = {};
-          hasFilterResults = true;
 
           const reader=new FileReader();
           reader.onload=function(evt){
@@ -1297,9 +1153,6 @@
           const input=document.getElementById("folderInput").value.trim();
           selectedImageFolders=parseImageFolders(input);
           imageCheckByIdpel={};
-          stanStatusFilters = {};
-          stanStatusData = {};
-          hasFilterResults = true;
 
           if(currentRawData.length>0){
             currentPage=1;
@@ -1328,22 +1181,13 @@
           filterTable();
         }
 
-        // Fungsi untuk mengupdate filter status stan
-        function updateStanStatusFilter(imageIndex, value){
-          const trimmedValue=value.trim();
-          if(trimmedValue) stanStatusFilters[imageIndex]=trimmedValue;
-          else delete stanStatusFilters[imageIndex];
-          currentPage=1;
-          filterTable();
-        }
-
         function updatePaginationControls(totalRows,totalPages){
           const info=document.getElementById("pagination-info");
           const prevBtn=document.getElementById("prevBtn");
           const nextBtn=document.getElementById("nextBtn");
 
           if(totalRows===0){
-            info.textContent="Tidak ada data yang cocok dengan filter (0 baris)";
+            info.textContent="Tidak ada data (0 baris)";
             prevBtn.disabled=true; nextBtn.disabled=true;
             return;
           }
@@ -1402,7 +1246,6 @@
 
           let filteredData=[...rawDataRows];
 
-          // Filter untuk kolom Excel
           const activeColumnFilters=Object.keys(columnFilters).filter(k => columnFilters[k].length>0);
           if(activeColumnFilters.length>0){
             filteredData=filteredData.filter(row=>{
@@ -1416,7 +1259,6 @@
             });
           }
 
-          // Filter global untuk IDPEL
           if(idpelIndex!==-1 && globalSearchTerm!==""){
             filteredData=filteredData.filter(row=>{
               const idpelValue=String(row[idpelIndex]||'').toUpperCase();
@@ -1424,57 +1266,12 @@
             });
           }
 
-          // Filter status OCR
           const statusSelectVal=document.getElementById('statusFilterSelect')?.value || '';
           if(statusSelectVal && ocrColIndex!==-1){
             filteredData=filteredData.filter(row=>{
               const st=computeRowStatus(row, idpelIndex);
               return statusSelectVal==='true' ? st===true : st===false;
             });
-          }
-
-          // Filter status stan (jika ada)
-          const activeStanFilters = Object.keys(stanStatusFilters).filter(k => stanStatusFilters[k].length>0);
-          if(activeStanFilters.length>0 && idpelIndex !== -1){
-            let tempFilteredData = [];
-            let foundMatches = false;
-            
-            for (const row of filteredData) {
-              const idpel = String(row[idpelIndex] || '');
-              let matchesAllFilters = true;
-              
-              // Cek setiap filter status stan yang aktif
-              for (const imageIndexStr of activeStanFilters) {
-                const imageIndex = parseInt(imageIndexStr, 10);
-                const requiredStatus = stanStatusFilters[imageIndex];
-                
-                // Buat key untuk data status stan
-                const stanKey = `${idpel}_${imageIndex}`;
-                const actualStatus = stanStatusData[stanKey];
-                
-                // Jika status tidak ada atau tidak cocok, baris ini tidak memenuhi filter
-                if (!actualStatus || actualStatus !== requiredStatus) {
-                  matchesAllFilters = false;
-                  break;
-                }
-              }
-              
-              if (matchesAllFilters) {
-                tempFilteredData.push(row);
-                foundMatches = true;
-              }
-            }
-            
-            if (foundMatches) {
-              filteredData = tempFilteredData;
-              hasFilterResults = true;
-            } else {
-              // Jika tidak ada yang cocok, tetap tampilkan semua data yang sudah difilter
-              hasFilterResults = false;
-              // Tapi jangan reset filteredData, biarkan dengan filter lainnya
-            }
-          } else {
-            hasFilterResults = true;
           }
 
           const sortedData=[...filteredData];
@@ -1582,265 +1379,101 @@
           }
 
           const excelColCount=header.length;
+          const imageHeaders=selectedImageFolders.map(item=>item.headerName);
           const idpelIndex=header.findIndex(h=>String(h).toUpperCase().includes("IDPEL"));
 
           const thead=document.createElement("thead");
           const hrow=document.createElement("tr");
 
-          // Kolom dari Excel
-          header.forEach((hText, index)=>{
+          [...header, ...imageHeaders, "STATUS"].forEach((hText, index)=>{
             const th=document.createElement("th");
             th.textContent=hText;
-            th.onclick=()=>sortTable(index);
-            if(sortDirection[index]) th.textContent += (sortDirection[index]==='asc'?' ▲':' ▼');
-            
-            // Tambahkan class khusus untuk IDPEL
-            if (hText.toUpperCase().includes("IDPEL")) {
-              th.classList.add("idpel-cell");
+
+            if(index<excelColCount){
+              th.onclick=()=>sortTable(index);
+              if(sortDirection[index]) th.textContent += (sortDirection[index]==='asc'?' ▲':' ▼');
             }
             hrow.appendChild(th);
           });
-
-          // MODIFIKASI: Kolom untuk Gambar 1, 2, 3 dan Status masing-masing
-          selectedImageFolders.forEach(item=>{
-            // Kolom Gambar
-            const imgTh=document.createElement("th");
-            imgTh.textContent=item.headerName;
-            imgTh.classList.add("img-cell");
-            hrow.appendChild(imgTh);
-            
-            // Kolom Status untuk gambar ini
-            const statusTh=document.createElement("th");
-            statusTh.textContent=`STATUS ${item.headerName}`;
-            statusTh.classList.add("status-cell");
-            hrow.appendChild(statusTh);
-          });
-
           thead.appendChild(hrow);
 
-          // ===== BARIS FILTER =====
           const filterRow=document.createElement("tr");
           filterRow.id="filterRow";
 
-          // Filter untuk kolom Excel
-          header.forEach((_, i)=>{
+          const totalCols=excelColCount + imageHeaders.length + 1;
+          for(let i=0;i<totalCols;i++){
             const td=document.createElement("td");
-            const select=document.createElement("select");
-            let optionAll=document.createElement("option");
-            optionAll.value="";
-            optionAll.textContent=`Semua ${header[i]}`;
-            select.appendChild(optionAll);
+            if(i<excelColCount){
+              const select=document.createElement("select");
+              let optionAll=document.createElement("option");
+              optionAll.value="";
+              optionAll.textContent=`Semua ${header[i]}`;
+              select.appendChild(optionAll);
 
-            const uniqueValues=getUniqueColumnValues(i);
-            uniqueValues.forEach(val=>{
-              let option=document.createElement("option");
-              option.value=val;
-              option.textContent=val;
-              select.appendChild(option);
-            });
+              const uniqueValues=getUniqueColumnValues(i);
+              uniqueValues.forEach(val=>{
+                let option=document.createElement("option");
+                option.value=val;
+                option.textContent=val;
+                select.appendChild(option);
+              });
 
-            select.value=columnFilters[i] || "";
-            select.onchange=(e)=>updateColumnFilter(i,e.target.value);
-            td.appendChild(select);
+              select.value=columnFilters[i] || "";
+              select.onchange=(e)=>updateColumnFilter(i,e.target.value);
+              td.appendChild(select);
+            }
             filterRow.appendChild(td);
-          });
-
-          // MODIFIKASI: Filter untuk kolom gambar dan status
-          selectedImageFolders.forEach((item, index)=>{
-            // Filter untuk kolom gambar (kosong)
-            const imgFilterTd=document.createElement("td");
-            imgFilterTd.innerHTML="&nbsp;";
-            filterRow.appendChild(imgFilterTd);
-            
-            // Filter untuk kolom status gambar - DROPDOWN UNTUK STATUS STAN
-            const statusFilterTd=document.createElement("td");
-            const stanSelect=document.createElement("select");
-            
-            // Opsi untuk dropdown status stan
-            const options = [
-              { value: "", text: `Semua Status Stan ${item.headerName}` },
-              { value: "valid", text: "✅ Valid" },
-              { value: "invalid", text: "❌ Tidak Valid" },
-              { value: "unknown", text: "❓ Tidak Diketahui" }
-            ];
-            
-            options.forEach(opt => {
-              const option = document.createElement('option');
-              option.value = opt.value;
-              option.textContent = opt.text;
-              if (opt.value === (stanStatusFilters[index] || "")) {
-                option.selected = true;
-              }
-              stanSelect.appendChild(option);
-            });
-            
-            stanSelect.onchange = (e) => updateStanStatusFilter(index, e.target.value);
-            statusFilterTd.appendChild(stanSelect);
-            filterRow.appendChild(statusFilterTd);
-          });
-
+          }
           thead.appendChild(filterRow);
           table.appendChild(thead);
 
           const tbody=document.createElement("tbody");
 
-          if (pageData.length === 0) {
-            // Jika tidak ada data yang cocok dengan filter, tampilkan pesan
-            const noDataRow = document.createElement("tr");
-            const noDataCell = document.createElement("td");
-            noDataCell.colSpan = excelColCount + (selectedImageFolders.length * 2);
-            noDataCell.className = "no-data-message";
-            
-            if (!hasFilterResults) {
-              noDataCell.innerHTML = `
-                <div style="padding: 30px;">
-                  <strong>⚠️ Tidak ada data yang cocok dengan filter status stan yang dipilih.</strong><br><br>
-                  <small>Namun, data tetap ditampilkan dengan filter lainnya (jika ada).</small><br>
-                  <small>Coba pilih status stan yang berbeda atau "Semua Status Stan".</small>
-                </div>
-              `;
-            } else {
-              noDataCell.innerHTML = `
-                <div style="padding: 30px;">
-                  <strong>⚠️ Tidak ada data yang cocok dengan semua filter yang diterapkan.</strong><br><br>
-                  <small>Coba:</small><br>
-                  <small>• Periksa filter yang aktif (IDPEL, Status OCR, Status Stan)</small><br>
-                  <small>• Reset filter dengan memilih "Semua" di dropdown filter</small><br>
-                  <small>• Atau hapus pencarian IDPEL jika ada</small>
-                </div>
-              `;
+          pageData.forEach(rowData=>{
+            const row=document.createElement("tr");
+
+            for(let i=0;i<excelColCount;i++){
+              const td=document.createElement("td");
+              const val=rowData[i];
+              td.textContent=(val===undefined||val===null||val==="")? "-": val;
+              row.appendChild(td);
             }
-            noDataRow.appendChild(noDataCell);
-            tbody.appendChild(noDataRow);
-          } else {
-            // Tampilkan data yang ada
-            pageData.forEach(rowData=>{
-              const row=document.createElement("tr");
 
-              // Kolom data Excel
-              for(let i=0;i<excelColCount;i++){
-                const td=document.createElement("td");
-                const val=rowData[i];
-                td.textContent=(val===undefined||val===null||val==="")? "-": val;
-                
-                // Tambahkan class khusus untuk IDPEL
-                if (header[i] && header[i].toUpperCase().includes("IDPEL")) {
-                  td.classList.add("idpel-cell");
-                }
-                row.appendChild(td);
+            selectedImageFolders.forEach(item=>{
+              const td=document.createElement("td");
+              const idpel=(idpelIndex!==-1)?rowData[idpelIndex]:null;
+              if(idpelIndex!==-1 && idpel){
+                const img=document.createElement("img");
+                img.src=`${item.folderPath}/${idpel}.jpg`;
+                img.alt=`Foto untuk IDPEL ${idpel} (${item.folderPath})`;
+                img.onclick=()=>openPopup(img.src);
+
+                img.onerror=function(){
+                  td.textContent=`Foto di ${item.folderPath} tidak ditemukan`;
+                  img.remove();
+                };
+                td.appendChild(img);
+              }else{
+                td.textContent="-";
               }
-
-              // MODIFIKASI: Kolom untuk setiap gambar dan statusnya
-              selectedImageFolders.forEach((item, folderIndex)=>{
-                // Kolom Gambar
-                const imgTd=document.createElement("td");
-                imgTd.classList.add("img-cell");
-                const idpel=(idpelIndex!==-1)?rowData[idpelIndex]:null;
-                if(idpelIndex!==-1 && idpel){
-                  const img=document.createElement("img");
-                  img.src=`${item.folderPath}/${idpel}.jpg`;
-                  img.alt=`${item.headerName} untuk IDPEL ${idpel}`;
-                  img.onclick=()=>openPopup(img.src);
-
-                  // Tambahkan event untuk analisis gambar
-                  img.onload = function() {
-                    // Analisis apakah gambar kosong atau pagar
-                    const imageBlank = isLikelyBlankImage(img);
-                    const imagePagar = isPagarImage(img);
-                    const imageExists = true;
-                    
-                    // Ambil nilai OCR dari kolom OCR
-                    const ocrValue = rowData[ocrColIndex];
-                    
-                    // Tentukan status gambar
-                    const imageStatus = determineImageStatus(ocrValue, imageExists, imageBlank, imagePagar);
-                    
-                    // Tentukan status stan berdasarkan status gambar
-                    const stanKey = `${idpel}_${folderIndex}`;
-                    if (!stanStatusData[stanKey]) {
-                      // Simpan status stan untuk filtering - DIKATAKAN LANGSUNG DENGAN STATUS GAMBAR
-                      stanStatusData[stanKey] = determineStanStatus(imageExists, imageBlank, imagePagar, imageStatus.status);
-                    }
-                    
-                    // Update status di kolom status
-                    const statusCell = imgTd.nextElementSibling;
-                    if (statusCell) {
-                      statusCell.textContent = imageStatus.text;
-                      statusCell.className = `row-status ${imageStatus.status}`;
-                      statusCell.title = `${imageStatus.tooltip} | Status Stan: ${stanStatusData[stanKey]}`;
-                    }
-                  };
-
-                  img.onerror=function(){
-                    imgTd.textContent=`Foto di ${item.folderPath} tidak ditemukan`;
-                    img.remove();
-                    
-                    // Set status menjadi false karena gambar tidak ada
-                    const ocrValue = rowData[ocrColIndex];
-                    const imageStatus = determineImageStatus(ocrValue, false, false, false);
-                    
-                    // Tentukan status stan (tidak ada gambar = unknown)
-                    const stanKey = `${idpel}_${folderIndex}`;
-                    if (!stanStatusData[stanKey]) {
-                      stanStatusData[stanKey] = 'unknown';
-                    }
-                    
-                    const statusCell = imgTd.nextElementSibling;
-                    if (statusCell) {
-                      statusCell.textContent = imageStatus.text;
-                      statusCell.className = `row-status ${imageStatus.status}`;
-                      statusCell.title = `${imageStatus.tooltip} | Status Stan: ${stanStatusData[stanKey]}`;
-                    }
-                  };
-                  imgTd.appendChild(img);
-                }else{
-                  imgTd.textContent="-";
-                  
-                  // Set status N/A karena tidak ada IDPEL
-                  const statusCell = imgTd.nextElementSibling;
-                  if (statusCell) {
-                    statusCell.textContent = "N/A";
-                    statusCell.className = "row-status na";
-                    statusCell.title = "Tidak ada IDPEL | Status Stan: unknown";
-                  }
-                }
-                row.appendChild(imgTd);
-
-                // Kolom Status Gambar
-                const statusTd=document.createElement("td");
-                statusTd.textContent="Loading...";
-                statusTd.className="row-status na";
-                statusTd.title="Memeriksa gambar...";
-                row.appendChild(statusTd);
-              });
-
-              tbody.appendChild(row);
+              row.appendChild(td);
             });
-          }
+
+            const statusTd=document.createElement("td");
+            statusTd.textContent="N/A";
+            row.appendChild(statusTd);
+
+            tbody.appendChild(row);
+          });
 
           table.appendChild(tbody);
 
-          // Jika tabel sangat lebar, tambahkan class untuk membuat tabel bisa melebar
-          const totalColumns = excelColCount + (selectedImageFolders.length * 2);
-          if (totalColumns > 15) {
-            table.classList.add("wide-table");
-          } else {
-            table.classList.remove("wide-table");
-          }
-
           if(currentRawData.length>0){
-            const allHeaders=[...header];
-            selectedImageFolders.forEach(item=>{
-              allHeaders.push(item.headerName);
-              allHeaders.push(`STATUS ${item.headerName}`);
-            });
+            const allHeaders=[...header, ...imageHeaders, "STATUS"];
             createFreezeControls(allHeaders);
           }
 
           applyFreeze();
-          
-          // Scroll ke paling kiri saat render tabel baru
-          tableContainer.scrollLeft = 0;
         }
 
         function renderDashboard(){
