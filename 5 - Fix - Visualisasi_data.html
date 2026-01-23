@@ -349,6 +349,48 @@
     .row-status.false{ background: var(--danger); }
     .row-status.na{ background: var(--gray); }
 
+    /* Logo */
+    .logo-pln{
+      width: 200px;      /* ⬅️ BESARKAN DI SINI */
+      height: auto;      /* jaga proporsi logo */
+      object-fit: contain;
+
+
+      /* ✅ FIX: hilangkan zoom/outline/border untuk logo */
+      border: none !important;
+      border-radius: 0 !important;
+      outline: none !important;
+      box-shadow: none !important;
+      transform: none !important;
+      transition: none !important;
+      cursor: default;
+    }
+    .logo-pln:hover,
+    .logo-pln:focus,
+    .logo-pln:active{
+      border: none !important;
+      outline: none !important;
+      box-shadow: none !important;
+      transform: none !important;
+    }
+
+    .brand-text{
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .brand-name{
+      font-weight: 900;
+      font-size: 1.05rem;
+      letter-spacing: .2px;
+    }
+
+    img:focus,
+    .brand:focus{
+      outline: none;
+    }
+
     /* Dashboard */
     #dashboardContent{
       margin-top: 20px;
@@ -699,7 +741,11 @@
 
   <div class="layout">
     <aside id="sidebar" class="sidebar">
-      <div class="brand">PLN <span class="badge">Tools</span></div>
+      <div class="brand">
+        <img src="assets/images/Logo_PLN.png" alt="Logo PLN" class="logo-pln">
+        <div class="brand-text">
+        </div>
+      </div>
 
       <div class="nav-title">Menu</div>
       <button class="nav-item active" id="nav-viewer" onclick="goTab('viewerTab')">
