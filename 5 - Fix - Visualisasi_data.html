@@ -828,17 +828,18 @@
           <h3 style="margin: 6px 0 0 0; color:#555;">Tabel Data Interaktif</h3>
 
           <div id="controls-group">
-            <!-- PERBAIKAN: Gunakan path yang benar dengan base folder -->
+            <!-- SEDERHANAKAN: Hanya perlu folder foto, pola otomatis -->
             <div class="control-card span-7">
-              <label for="folderInput">Folder Foto (Header|Path, pisahkan koma):</label>
+              <label for="folderInput">Folder Foto (hanya nama folder):</label>
 
               <div class="folder-inline">
                 <div>
                   <input type="text" id="folderInput"
-                         placeholder="Gambar 1|3_scan_output, Gambar 2|images2, Gambar 3|images3"
-                         value="Gambar 1|downloaded_foto_meter, Gambar 2|downloaded_foto_meter, Gambar 3|downloaded_foto_meter">
+                         placeholder="downloaded_foto_meter"
+                         value="downloaded_foto_meter">
                   <p class="small-note" style="margin:6px 0 0 0;">
-                    Format file: <b>IDPEL_YYYYMM_X.jpg</b> (Contoh: 321200545099_202512_1.jpg)
+                    <b>Pola otomatis:</b> {IDPEL}_{TAHUNBULAN}_{INDEX}.jpg<br>
+                    Contoh: 321400426859_202512_1.jpg
                   </p>
                 </div>
 
@@ -929,25 +930,14 @@
       </div>
 
       <script>
-        // ===== KONFIGURASI PATH =====
-        // Dapatkan base URL dari lokasi saat ini
+        // ===== KONFIGURASI UTAMA =====
+        // Base URL otomatis dari lokasi file HTML
         const currentPath = window.location.pathname;
         const baseFolder = currentPath.split('/').slice(0, -1).join('/') || '/';
+        const baseUrl = window.location.origin + baseFolder;
         
-        console.log('Path saat ini:', currentPath);
+        console.log('Base URL:', baseUrl);
         console.log('Base folder:', baseFolder);
-        console.log('URL lengkap:', window.location.href);
-
-        // Fungsi untuk mendapatkan path gambar yang benar
-        function getCorrectImagePath(folderPath, fileName) {
-          // Jika folderPath sudah lengkap dengan base, gunakan langsung
-          if (folderPath.startsWith('http://') || folderPath.startsWith('https://') || folderPath.startsWith('/')) {
-            return `${folderPath}/${fileName}`;
-          }
-          
-          // Jika folderPath relatif, tambahkan base folder
-          return `${baseFolder}/${folderPath}/${fileName}`;
-        }
 
         // ===== DEBUG FUNCTIONS =====
         function debugLog(message, type = 'info') {
@@ -977,8 +967,7 @@
         
         // Inisialisasi debug
         debugLog('Aplikasi dimulai...', 'info');
-        debugLog(`URL: ${window.location.href}`, 'info');
-        debugLog(`Base folder: ${baseFolder}`, 'info');
+        debugLog(`Base URL: ${baseUrl}`, 'info');
 
         const table = document.getElementById("dataTable");
         const tableContainer = document.getElementById("table-container");
@@ -1000,6 +989,9 @@
         let stanStatusFilters = {};
         let stanStatusData = {};
         let hasFilterResults = true;
+
+        // Folder foto (sederhana, hanya nama folder)
+        let imageFolder = "downloaded_foto_meter";
 
         // ===== Sidebar toggle (mobile) =====
         function toggleSidebar(force){
@@ -1052,27 +1044,6 @@
           }
         }
 
-        function parseImageFolders(input) {
-          const configs = [];
-          if (!input) return configs;
-          const folderStrings = input.split(',').map(s => s.trim()).filter(s => s.length > 0);
-          folderStrings.forEach(s => {
-            const parts = s.split('|').map(p => p.trim());
-            let headerName, folderPath;
-            if (parts.length === 2 && parts[0] && parts[1]) { 
-              headerName = parts[0]; 
-              folderPath = parts[1]; 
-            } else if (parts.length === 1 && parts[0]) { 
-              headerName = parts[0]; 
-              folderPath = parts[0]; 
-            } else return;
-            configs.push({ headerName, folderPath });
-          });
-          return configs;
-        }
-
-        let selectedImageFolders = parseImageFolders(document.getElementById("folderInput").value);
-
         function showTab(tabId) {
           document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
           document.getElementById(tabId).style.display = 'block';
@@ -1098,34 +1069,54 @@
           return -1;
         }
 
-        // ===== FUNGSI BARU: EKSTRAK INFO BULAN DARI EXCEL =====
+        // ===== FUNGSI UTAMA: EKSTRAK TAHUN BULAN DARI EXCEL =====
         function extractYearMonthFromExcel(rowData) {
           if (!currentRawData.length) return getCurrentYearMonth();
           
           const headers = currentRawData[0];
-          const bulanHeaders = ['BLTH', 'BULAN', 'PERIODE', 'MONTH', 'TGL', 'TANGGAL'];
+          
+          // Daftar kemungkinan nama kolom yang berisi tanggal/bulan
+          const dateHeaders = ['BLTH', 'BULAN', 'PERIODE', 'MONTH', 'TGL', 'TANGGAL', 'DATE', 'PERIOD'];
           
           for (let i = 0; i < headers.length; i++) {
             const colName = String(headers[i]).toUpperCase();
-            if (bulanHeaders.some(keyword => colName.includes(keyword))) {
+            
+            // Cek apakah kolom ini kemungkinan berisi tanggal
+            if (dateHeaders.some(keyword => colName.includes(keyword))) {
               const value = rowData[i];
               if (value) {
                 const strVal = String(value);
-                // Jika format YYYYMM langsung
+                
+                // Format YYYYMM langsung (contoh: 202512)
                 if (/^\d{6}$/.test(strVal)) {
+                  debugLog(`Ditemukan bulan dari kolom ${colName}: ${strVal}`, 'success');
                   return strVal;
                 }
-                // Jika format tanggal YYYY-MM-DD
+                
+                // Format YYYY-MM-DD (contoh: 2025-12-31)
                 else if (/^\d{4}-\d{2}-\d{2}$/.test(strVal)) {
-                  return strVal.replace(/-/g, '').substring(0, 6);
+                  const yyyymm = strVal.replace(/-/g, '').substring(0, 6);
+                  debugLog(`Ditemukan tanggal dari kolom ${colName}: ${strVal} -> ${yyyymm}`, 'success');
+                  return yyyymm;
                 }
-                // Jika format lain, coba ekstrak angka
+                
+                // Format DD/MM/YYYY (contoh: 31/12/2025)
+                else if (/^\d{2}\/\d{2}\/\d{4}$/.test(strVal)) {
+                  const parts = strVal.split('/');
+                  const yyyymm = parts[2] + parts[1];
+                  debugLog(`Ditemukan tanggal dari kolom ${colName}: ${strVal} -> ${yyyymm}`, 'success');
+                  return yyyymm;
+                }
+                
+                // Coba ekstrak angka 6 digit dari string
                 else {
                   const numbers = strVal.match(/\d+/g);
                   if (numbers && numbers.length > 0) {
-                    const lastNum = numbers[numbers.length - 1];
-                    if (lastNum.length === 6) {
-                      return lastNum;
+                    for (const num of numbers) {
+                      if (num.length === 6) {
+                        debugLog(`Ditemukan 6-digit dari kolom ${colName}: ${num}`, 'success');
+                        return num;
+                      }
                     }
                   }
                 }
@@ -1137,12 +1128,15 @@
           for (let i = 0; i < rowData.length; i++) {
             const val = String(rowData[i] || '');
             if (/^\d{6}$/.test(val)) {
+              debugLog(`Ditemukan 6-digit di data: ${val}`, 'success');
               return val;
             }
           }
           
           // Default ke bulan saat ini
-          return getCurrentYearMonth();
+          const defaultMonth = getCurrentYearMonth();
+          debugLog(`Tidak ditemukan bulan di Excel, menggunakan default: ${defaultMonth}`, 'warning');
+          return defaultMonth;
         }
 
         function getCurrentYearMonth() {
@@ -1152,78 +1146,117 @@
           return `${year}${month}`;
         }
 
-        // ===== FUNGSI BARU UNTUK MENCARI FILE GAMBAR =====
-        function generatePossibleFileNames(idpel, folderIndex, rowData) {
-          const fotoKe = folderIndex + 1;
+        // ===== FUNGSI UTAMA: GENERATE URL GAMBAR OTOMATIS =====
+        function generateImageUrl(idpel, folderIndex, rowData) {
+          if (!idpel) {
+            debugLog(`IDPEL kosong, tidak dapat membuat URL gambar`, 'warning');
+            return null;
+          }
+          
+          // 1. Dapatkan tahun-bulan dari data Excel
           const yearMonth = extractYearMonthFromExcel(rowData);
           
-          // Daftar format file yang mungkin
-          return [
-            // Format: IDPEL_YYYYMM_X.jpg
-            `${idpel}_${yearMonth}_${fotoKe}.jpg`,
-            `${idpel}_${yearMonth}_${fotoKe}.png`,
-            `${idpel}_${yearMonth}_${fotoKe}.jpeg`,
-            
-            // Format: IDPEL_X.jpg
-            `${idpel}_${fotoKe}.jpg`,
-            `${idpel}_${fotoKe}.png`,
-            `${idpel}_${fotoKe}.jpeg`,
-            
-            // Format bulan spesifik (Desember 2025)
-            `${idpel}_202512_${fotoKe}.jpg`,
-            `${idpel}_202512_${fotoKe}.png`,
-            `${idpel}_202512_${fotoKe}.jpeg`,
-            
-            // Format untuk foto pertama saja
-            fotoKe === 1 ? `${idpel}_${yearMonth}.jpg` : null,
-            fotoKe === 1 ? `${idpel}_${yearMonth}.png` : null,
-            fotoKe === 1 ? `${idpel}_${yearMonth}.jpeg` : null,
-            fotoKe === 1 ? `${idpel}.jpg` : null,
-            fotoKe === 1 ? `${idpel}.png` : null,
-            fotoKe === 1 ? `${idpel}.jpeg` : null
-          ].filter(Boolean); // Hapus null values
+          // 2. Tentukan index foto (1, 2, 3, dst)
+          const fotoIndex = folderIndex + 1;
+          
+          // 3. Generate nama file sesuai pola: IDPEL_YYYYMM_INDEX.jpg
+          const fileName = `${idpel}_${yearMonth}_${fotoIndex}.jpg`;
+          
+          // 4. Buat URL lengkap
+          const imageUrl = `${baseUrl}/${imageFolder}/${fileName}`;
+          
+          debugLog(`Generated URL: ${imageUrl}`, 'info');
+          
+          return imageUrl;
         }
 
         // ===== FUNGSI UNTUK MEMERIKSA KEBERADAAN FILE =====
         async function checkImageExists(url) {
           try {
-            debugLog(`Memeriksa: ${url}`, 'info');
             const response = await fetch(url, { method: 'HEAD' });
-            const exists = response.ok;
-            debugLog(`Status: ${exists ? 'ADA' : 'TIDAK ADA'}`, exists ? 'success' : 'warning');
-            return exists;
+            return response.ok;
           } catch (error) {
-            debugLog(`Error: ${error.message}`, 'error');
             return false;
           }
         }
 
-        // ===== FUNGSI UTAMA UNTUK MENDAPATKAN URL GAMBAR =====
-        async function findAndLoadImage(idpel, folderPath, folderIndex, rowData, imgElement) {
-          if (!idpel) {
-            debugLog(`IDPEL kosong`, 'warning');
-            return false;
-          }
-
-          const possibleFileNames = generatePossibleFileNames(idpel, folderIndex, rowData);
+        // ===== FUNGSI UNTUK MENCARI FILE ALTERNATIF =====
+        async function findAlternativeImage(idpel, folderIndex, rowData) {
+          if (!idpel) return null;
           
-          debugLog(`Mencari gambar untuk IDPEL: ${idpel}, folder: ${folderPath}`, 'info');
-          debugLog(`Format yang dicoba: ${possibleFileNames.join(', ')}`, 'info');
-
-          // Coba setiap format
-          for (const fileName of possibleFileNames) {
-            const imageUrl = getCorrectImagePath(folderPath, fileName);
-            debugLog(`Mencoba: ${imageUrl}`, 'info');
+          const yearMonth = extractYearMonthFromExcel(rowData);
+          const fotoIndex = folderIndex + 1;
+          
+          // Daftar pola alternatif
+          const alternativePatterns = [
+            // Pola utama: IDPEL_YYYYMM_INDEX.jpg
+            `${idpel}_${yearMonth}_${fotoIndex}.jpg`,
             
-            const exists = await checkImageExists(imageUrl);
+            // Pola alternatif 1: IDPEL_INDEX.jpg
+            `${idpel}_${fotoIndex}.jpg`,
+            
+            // Pola alternatif 2: IDPEL.jpg (hanya untuk foto pertama)
+            fotoIndex === 1 ? `${idpel}.jpg` : null,
+            
+            // Pola dengan ekstensi berbeda
+            `${idpel}_${yearMonth}_${fotoIndex}.png`,
+            `${idpel}_${fotoIndex}.png`,
+            fotoIndex === 1 ? `${idpel}.png` : null,
+            
+            // Pola dengan ekstensi jpeg
+            `${idpel}_${yearMonth}_${fotoIndex}.jpeg`,
+            `${idpel}_${fotoIndex}.jpeg`,
+            fotoIndex === 1 ? `${idpel}.jpeg` : null,
+            
+            // Pola dengan bulan spesifik (untuk testing)
+            `${idpel}_202512_${fotoIndex}.jpg`,
+            `${idpel}_202511_${fotoIndex}.jpg`,
+            `${idpel}_202510_${fotoIndex}.jpg`
+          ].filter(pattern => pattern !== null);
+          
+          // Coba setiap pola
+          for (const pattern of alternativePatterns) {
+            const testUrl = `${baseUrl}/${imageFolder}/${pattern}`;
+            const exists = await checkImageExists(testUrl);
+            
             if (exists) {
-              debugLog(`✅ Ditemukan: ${imageUrl}`, 'success');
-              imgElement.src = imageUrl;
-              return true;
+              debugLog(`Ditemukan alternatif: ${pattern}`, 'success');
+              return testUrl;
             }
           }
+          
+          return null;
+        }
 
-          debugLog(`❌ Tidak ada gambar yang ditemukan untuk IDPEL: ${idpel}`, 'error');
+        // ===== FUNGSI UTAMA: LOAD GAMBAR =====
+        async function loadImageForIdpel(imgElement, idpel, folderIndex, rowData) {
+          // 1. Coba pola utama
+          const mainUrl = generateImageUrl(idpel, folderIndex, rowData);
+          
+          if (mainUrl) {
+            const exists = await checkImageExists(mainUrl);
+            
+            if (exists) {
+              debugLog(`✅ Gambar ditemukan: ${mainUrl}`, 'success');
+              imgElement.src = mainUrl;
+              return true;
+            } else {
+              debugLog(`❌ Gambar utama tidak ditemukan: ${mainUrl}`, 'warning');
+              
+              // 2. Coba alternatif
+              const altUrl = await findAlternativeImage(idpel, folderIndex, rowData);
+              
+              if (altUrl) {
+                debugLog(`✅ Alternatif ditemukan: ${altUrl}`, 'success');
+                imgElement.src = altUrl;
+                return true;
+              } else {
+                debugLog(`❌ Tidak ada gambar yang ditemukan untuk IDPEL: ${idpel}`, 'error');
+                return false;
+              }
+            }
+          }
+          
           return false;
         }
 
@@ -1536,6 +1569,10 @@
               debugLog(`Kolom OCR ditemukan di index: ${ocrColIndex}`, 'info');
               debugLog(`Kolom referensi ditemukan di index: ${refColIndex}`, 'info');
 
+              // Cari kolom IDPEL
+              const idpelIndex = (currentRawData[0]||[]).findIndex(h => String(h).toUpperCase().includes("IDPEL"));
+              debugLog(`Kolom IDPEL ditemukan di index: ${idpelIndex}`, 'info');
+
               filterTable();
               applyFreeze();
               setupStatusControls();
@@ -1551,20 +1588,21 @@
 
         function updateImageFolders(){
           const input=document.getElementById("folderInput").value.trim();
-          selectedImageFolders=parseImageFolders(input);
+          imageFolder = input || "downloaded_foto_meter";
+          
           imageCheckByIdpel={};
           stanStatusFilters = {};
           stanStatusData = {};
           hasFilterResults = true;
 
-          debugLog(`Folder gambar diperbarui: ${JSON.stringify(selectedImageFolders)}`, 'info');
+          debugLog(`Folder gambar diperbarui: ${imageFolder}`, 'info');
 
           if(currentRawData.length>0){
             currentPage=1;
             filterTable();
           }else{
-            debugLog(`Folder foto disimpan. Unggah Excel untuk melihat tabel.`, 'info');
-            alert(`Folder foto disimpan. Unggah Excel untuk melihat tabel.`);
+            debugLog(`Folder foto disimpan: ${imageFolder}. Unggah Excel untuk melihat tabel.`, 'info');
+            alert(`Folder foto disimpan: ${imageFolder}. Unggah Excel untuk melihat tabel.`);
           }
         }
 
@@ -1857,20 +1895,20 @@
             hrow.appendChild(th);
           });
 
-          // Kolom untuk Gambar dan Status
-          selectedImageFolders.forEach(item=>{
+          // Kolom untuk Gambar (3 kolom untuk 3 foto)
+          for (let i = 1; i <= 3; i++) {
             // Kolom Gambar
             const imgTh=document.createElement("th");
-            imgTh.textContent=item.headerName;
+            imgTh.textContent=`Gambar ${i}`;
             imgTh.classList.add("img-cell");
             hrow.appendChild(imgTh);
             
             // Kolom Status untuk gambar ini
             const statusTh=document.createElement("th");
-            statusTh.textContent=`STATUS ${item.headerName}`;
+            statusTh.textContent=`STATUS Gambar ${i}`;
             statusTh.classList.add("status-cell");
             hrow.appendChild(statusTh);
-          });
+          }
 
           thead.appendChild(hrow);
 
@@ -1901,8 +1939,8 @@
             filterRow.appendChild(td);
           });
 
-          // Filter untuk kolom gambar dan status
-          selectedImageFolders.forEach((item, index)=>{
+          // Filter untuk kolom gambar dan status (3 kolom)
+          for (let i = 0; i < 3; i++) {
             // Filter untuk kolom gambar (kosong)
             const imgFilterTd=document.createElement("td");
             imgFilterTd.innerHTML="&nbsp;";
@@ -1914,7 +1952,7 @@
             
             // Opsi untuk dropdown status stan
             const options = [
-              { value: "", text: `Semua Status Stan ${item.headerName}` },
+              { value: "", text: `Semua Status` },
               { value: "valid", text: "✅ Valid" },
               { value: "invalid", text: "❌ Tidak Valid" },
               { value: "unknown", text: "❓ Tidak Diketahui" }
@@ -1924,16 +1962,16 @@
               const option = document.createElement('option');
               option.value = opt.value;
               option.textContent = opt.text;
-              if (opt.value === (stanStatusFilters[index] || "")) {
+              if (opt.value === (stanStatusFilters[i] || "")) {
                 option.selected = true;
               }
               stanSelect.appendChild(option);
             });
             
-            stanSelect.onchange = (e) => updateStanStatusFilter(index, e.target.value);
+            stanSelect.onchange = (e) => updateStanStatusFilter(i, e.target.value);
             statusFilterTd.appendChild(stanSelect);
             filterRow.appendChild(statusFilterTd);
-          });
+          }
 
           thead.appendChild(filterRow);
           table.appendChild(thead);
@@ -1944,7 +1982,7 @@
             // Jika tidak ada data yang cocok dengan filter, tampilkan pesan
             const noDataRow = document.createElement("tr");
             const noDataCell = document.createElement("td");
-            noDataCell.colSpan = excelColCount + (selectedImageFolders.length * 2);
+            noDataCell.colSpan = excelColCount + 6; // 3 gambar x 2 kolom (gambar + status)
             noDataCell.className = "no-data-message";
             
             if (!hasFilterResults) {
@@ -1985,18 +2023,15 @@
                 row.appendChild(td);
               }
 
-              // Kolom untuk setiap gambar dan statusnya
-              for (let folderIndex = 0; folderIndex < selectedImageFolders.length; folderIndex++) {
-                const item = selectedImageFolders[folderIndex];
-                
-                // Kolom Gambar
+              // Kolom untuk 3 gambar dan statusnya
+              for (let folderIndex = 0; folderIndex < 3; folderIndex++) {
                 const imgTd=document.createElement("td");
                 imgTd.classList.add("img-cell");
                 const idpel=(idpelIndex!==-1)?rowData[idpelIndex]:null;
                 
                 if(idpelIndex!==-1 && idpel){
                   const img=document.createElement("img");
-                  img.alt=`${item.headerName} untuk IDPEL ${idpel}`;
+                  img.alt=`Gambar ${folderIndex + 1} untuk IDPEL ${idpel}`;
                   img.style.width = "76px";
                   img.style.height = "76px";
                   img.style.objectFit = "cover";
@@ -2009,10 +2044,10 @@
                     }
                   };
 
-                  // Cari dan load gambar
-                  const imageFound = await findAndLoadImage(idpel, item.folderPath, folderIndex, rowData, img);
+                  // Load gambar berdasarkan IDPEL
+                  const imageLoaded = await loadImageForIdpel(img, idpel, folderIndex, rowData);
                   
-                  if (imageFound) {
+                  if (imageLoaded) {
                     // Set event handler untuk analisis gambar setelah load
                     img.onload = function() {
                       // Analisis apakah gambar kosong atau pagar
@@ -2042,7 +2077,7 @@
                     };
                     
                     img.onerror = function() {
-                      debugLog(`Gagal load gambar untuk IDPEL: ${idpel}`, 'error');
+                      debugLog(`Gagal load gambar untuk IDPEL: ${idpel}, index: ${folderIndex}`, 'error');
                       
                       // Set status menjadi false karena gambar error
                       const ocrValue = rowData[ocrColIndex];
@@ -2116,7 +2151,7 @@
           table.appendChild(tbody);
 
           // Jika tabel sangat lebar, tambahkan class untuk membuat tabel bisa melebar
-          const totalColumns = excelColCount + (selectedImageFolders.length * 2);
+          const totalColumns = excelColCount + 6; // 3 gambar x 2 kolom
           if (totalColumns > 15) {
             table.classList.add("wide-table");
           } else {
@@ -2125,10 +2160,10 @@
 
           if(currentRawData.length>0){
             const allHeaders=[...header];
-            selectedImageFolders.forEach(item=>{
-              allHeaders.push(item.headerName);
-              allHeaders.push(`STATUS ${item.headerName}`);
-            });
+            for (let i = 1; i <= 3; i++) {
+              allHeaders.push(`Gambar ${i}`);
+              allHeaders.push(`STATUS Gambar ${i}`);
+            }
             createFreezeControls(allHeaders);
           }
 
@@ -2235,6 +2270,7 @@
           toggleSidebar(false);
           
           debugLog('Aplikasi siap digunakan', 'success');
+          debugLog('Pola gambar otomatis: {IDPEL}_{TAHUNBULAN}_{INDEX}.jpg', 'info');
         });
 
         // ===== Runner modal (opsional, butuh backend) =====
