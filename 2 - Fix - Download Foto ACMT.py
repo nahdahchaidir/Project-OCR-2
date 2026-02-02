@@ -17,7 +17,6 @@ DEFAULT_RETRIES = 1     # default maksimal dicoba ulang
 RETRY_DELAY = 1         # detik jeda tiap gagal
 
 
-# Fungsi untuk membuat folder jika belum ada
 def create_folder(folder):
     try:
         os.makedirs(folder, exist_ok=True)
@@ -26,7 +25,6 @@ def create_folder(folder):
         print(f"[ERROR] Gagal membuat folder {folder}: {e}")
 
 
-# Fungsi download dengan retry
 def download_image(image_id, blth, output_folder, session, base_url, failed_ids, max_retries):
     url = f"https://{base_url}/acmt/DisplayBlobServlet1?idpel={image_id}&blth={blth}&unitup="
     file_name = f"{image_id}.jpg"
@@ -56,35 +54,57 @@ def download_image(image_id, blth, output_folder, session, base_url, failed_ids,
                 return False
 
 
-# Fungsi paralel download dengan progress
-def download_images_with_progress(ids, blth, output_folder, session, base_url, progress_var, label_var, failed_ids, max_retries, max_threads=10):
+def download_images_with_progress(
+    ids, blth, output_folder, session, base_url,
+    progress_var, label_var, root,
+    failed_ids, max_retries,
+    max_threads=10
+):
     total = len(ids)
     done = 0
 
+    def ui_update(percent, text):
+        root.after(0, progress_var.set, percent)
+        root.after(0, label_var.set, text)
+
+    if total == 0:
+        ui_update(0, "Progress: 0% (0/0)")
+        return
+
     with ThreadPoolExecutor(max_threads) as executor:
         futures = {
-            executor.submit(download_image, image_id, blth, output_folder, session, base_url, failed_ids, max_retries): image_id
+            executor.submit(
+                download_image, image_id, blth, output_folder,
+                session, base_url, failed_ids, max_retries
+            ): image_id
             for image_id in ids
         }
 
-        for future in as_completed(futures):
+        for _ in as_completed(futures):
             done += 1
             percent = int((done / total) * 100)
-            progress_var.set(percent)
-            label_var.set(f"Progress: {percent}% ({done}/{total})")
+            ui_update(percent, f"Progress: {percent}% ({done}/{total})")
 
 
-# Fungsi utama
-def main(thbl, cookie, input_file, base_url, progress_var, label_var, root, max_retries):
+def main(thbl, cookie, input_file, base_url, progress_var, label_var, root, max_retries, limit_size):
     failed_ids = []
     try:
         with open(input_file, "r") as file:
-            ids = [line.strip() for line in file if line.strip()]
+            ids_all = [line.strip() for line in file if line.strip()]
+
+        # Batasi jumlah ID yang didownload (misal 5000 pertama)
+        if limit_size and limit_size > 0:
+            ids = ids_all[:limit_size]
+        else:
+            ids = ids_all
+
+        if not ids:
+            messagebox.showerror("Error", "File IDPEL kosong atau tidak ada ID valid.")
+            return
 
         output_folder = "2_images"
         create_folder(output_folder)
 
-        # folder log gagal unduh
         log_folder = "4_log_gagal_unduh_foto"
         create_folder(log_folder)
 
@@ -99,10 +119,21 @@ def main(thbl, cookie, input_file, base_url, progress_var, label_var, root, max_
         session = requests.Session()
         session.headers.update(headers)
 
-        download_images_with_progress(ids, thbl, output_folder, session, base_url, progress_var, label_var, failed_ids, max_retries, max_threads=10)
+        # info limit
+        if limit_size and limit_size > 0:
+            print(f"[INFO] Total ID di file: {len(ids_all)} | Akan didownload: {len(ids)} (limit {limit_size})")
+        else:
+            print(f"[INFO] Total ID di file: {len(ids_all)} | Akan didownload semua: {len(ids)}")
 
+        download_images_with_progress(
+            ids, thbl, output_folder, session, base_url,
+            progress_var, label_var, root,
+            failed_ids, max_retries,
+            max_threads=10
+        )
+
+        # tulis log gagal
         if failed_ids:
-            # nama file gagal = failed_ids_<nama_input>.txt di dalam folder log
             base_name = os.path.splitext(os.path.basename(input_file))[0]
             failed_file = os.path.join(log_folder, f"failed_ids_{base_name}.txt")
 
@@ -110,9 +141,13 @@ def main(thbl, cookie, input_file, base_url, progress_var, label_var, root, max_
                 for fid in failed_ids:
                     f.write(f"{fid}\n")
 
-            messagebox.showwarning("Selesai", f"Ada {len(failed_ids)} ID gagal.\nLihat di folder:\n{failed_file}")
+            messagebox.showwarning(
+                "Selesai",
+                f"Selesai download {len(ids)} ID.\n"
+                f"Ada {len(failed_ids)} ID gagal.\nLihat:\n{failed_file}"
+            )
         else:
-            messagebox.showinfo("Selesai", "Semua gambar berhasil diunduh!")
+            messagebox.showinfo("Selesai", f"Selesai! Berhasil download {len(ids)} ID tanpa gagal.")
 
     except FileNotFoundError:
         messagebox.showerror("Error", f"File {input_file} tidak ditemukan.")
@@ -120,7 +155,6 @@ def main(thbl, cookie, input_file, base_url, progress_var, label_var, root, max_
         messagebox.showerror("Error", f"Terjadi kesalahan: {e}")
 
 
-# GUI Tkinter
 def run_gui():
     def browse_file():
         filename = filedialog.askopenfilename(
@@ -138,13 +172,18 @@ def run_gui():
         base_url = combo_server.get()
         max_retries = int(spin_retry.get())
 
+        limit_raw = combo_limit.get().strip()
+        limit_size = 0
+        if limit_raw.lower() != "semua":
+            limit_size = int(limit_raw.replace(".", ""))
+
         if not thbl or not cookie or not input_file or not base_url:
-            messagebox.showerror("Input Error", "THBL, Cookie, File IDPEL, Server, dan Retry harus diisi!")
+            messagebox.showerror("Input Error", "THBL, Cookie, File IDPEL, dan Server harus diisi!")
             return
 
         threading.Thread(
             target=main,
-            args=(thbl, cookie, input_file, base_url, progress_var, label_var, root, max_retries),
+            args=(thbl, cookie, input_file, base_url, progress_var, label_var, root, max_retries, limit_size),
             daemon=True
         ).start()
 
@@ -165,7 +204,7 @@ def run_gui():
     tk.Button(root, text="Browse", command=browse_file).grid(row=2, column=2, padx=5, pady=5)
 
     tk.Label(root, text="Server:").grid(row=3, column=0, sticky="w", padx=5, pady=5)
-    combo_server = ttk.Combobox(root, values=["portalapp.iconpln.co.id", "ap2t.pln.co.id"], width=47)
+    combo_server = ttk.Combobox(root, values=["portalapp.iconpln.co.id", "ap2t.pln.co.id"], width=47, state="readonly")
     combo_server.grid(row=3, column=1, padx=5, pady=5)
     combo_server.current(0)
 
@@ -175,19 +214,25 @@ def run_gui():
     spin_retry.insert(0, str(DEFAULT_RETRIES))
     spin_retry.grid(row=4, column=1, sticky="w", padx=5, pady=5)
 
+    # LIMIT DOWNLOAD (tanpa batch)
+    tk.Label(root, text="Download berapa ID:").grid(row=5, column=0, sticky="w", padx=5, pady=5)
+    combo_limit = ttk.Combobox(root, values=["5.000", "10.000", "Semua"], width=47, state="readonly")
+    combo_limit.grid(row=5, column=1, padx=5, pady=5)
+    combo_limit.current(0)  # default 5.000
+
     progress_var = tk.IntVar()
-    label_var = tk.StringVar(value="Progress: 0%")
+    label_var = tk.StringVar(value="Progress: 0% (0/0)")
 
     progress_bar = ttk.Progressbar(root, variable=progress_var, maximum=100, length=400)
-    progress_bar.grid(row=5, column=0, columnspan=3, padx=5, pady=10)
+    progress_bar.grid(row=6, column=0, columnspan=3, padx=5, pady=10)
 
     progress_label = tk.Label(root, textvariable=label_var)
-    progress_label.grid(row=6, column=0, columnspan=3)
+    progress_label.grid(row=7, column=0, columnspan=3)
 
     btn_start = tk.Button(root, text="Mulai Download", command=start_download)
-    btn_start.grid(row=7, column=0, columnspan=3, pady=10)
+    btn_start.grid(row=8, column=0, columnspan=3, pady=10)
 
-    tk.Label(root, text="Created by MONEVMU").grid(row=8, column=0, sticky="w", padx=5, pady=5)
+    tk.Label(root, text="Created by MONEVMU").grid(row=9, column=0, sticky="w", padx=5, pady=5)
 
     root.mainloop()
 
